@@ -56,6 +56,11 @@ class AudioAsrPipeline(Mapper):
         self.max_segment_seconds = int(float(kwargs.get("maxSegmentSeconds", 120)))
         self.asr_device = str(kwargs.get("asrDevice", "auto")).strip()
 
+        self.do_keyword_recall = _as_bool(kwargs.get("doKeywordRecall", False))
+        self.zh_keyword_path = str(kwargs.get("zhKeywordPath", "")).strip()
+        self.en_keyword_path = str(kwargs.get("enKeywordPath", "")).strip()
+        self.keep_keyword_details = _as_bool(kwargs.get("keepKeywordDetails", False))
+
     def execute(self, sample: Dict[str, Any]) -> Dict[str, Any]:
         start = time.time()
 
@@ -76,6 +81,7 @@ class AudioAsrPipeline(Mapper):
             out_lid = work / "output_data" / "lid"
             out_split = work / "output_data" / "split"
             out_asr = work / "output_data" / "asr"
+            out_validation = work / "output_data" / "validation"
 
             input_dir.mkdir(parents=True, exist_ok=True)
             out_norm.mkdir(parents=True, exist_ok=True)
@@ -83,6 +89,7 @@ class AudioAsrPipeline(Mapper):
             out_lid.mkdir(parents=True, exist_ok=True)
             out_split.mkdir(parents=True, exist_ok=True)
             out_asr.mkdir(parents=True, exist_ok=True)
+            out_validation.mkdir(parents=True, exist_ok=True)
 
             # 复制输入音频到 pipeline 输入目录
             src_name = in_path.name
@@ -261,6 +268,73 @@ class AudioAsrPipeline(Mapper):
             if not merged_text:
                 merged_text = ""
 
+            keyword_recall = None
+            if self.do_keyword_recall:
+                import sys
+
+                from audio_preprocessor.src.pipeline import eval_keyword_recall as _kwr  # type: ignore
+
+                default_kw_dir = ap_root / "input_data" / "valiadation"
+                zh_kw = Path(self.zh_keyword_path).expanduser() if self.zh_keyword_path else default_kw_dir / "zh_keyword.txt"
+                en_kw = Path(self.en_keyword_path).expanduser() if self.en_keyword_path else default_kw_dir / "en_keyword.txt"
+                if not zh_kw.is_absolute():
+                    zh_kw = (_repo_root() / zh_kw).resolve()
+                if not en_kw.is_absolute():
+                    en_kw = (_repo_root() / en_kw).resolve()
+                if not zh_kw.exists() and not en_kw.exists():
+                    raise FileNotFoundError(f"关键词文件不存在: {zh_kw} / {en_kw}")
+
+                argv_backup = sys.argv[:]
+                try:
+                    sys.argv = [
+                        sys.argv[0],
+                        "--zh_kw",
+                        str(zh_kw),
+                        "--en_kw",
+                        str(en_kw),
+                        "--hyp",
+                        str(merged),
+                        "--work_dir",
+                        str(out_validation),
+                    ]
+                    rc = _kwr.main()
+                    if rc != 0:
+                        raise RuntimeError(f"eval_keyword_recall 失败，返回码: {rc}")
+                finally:
+                    sys.argv = argv_backup
+
+                zh_kw_map = _kwr.read_kw_kaldi(zh_kw)
+                en_kw_map = _kwr.read_kw_kaldi(en_kw)
+                hyp_map = _kwr.read_kv_text(merged)
+                zh_result = _kwr.compute_keyword_recall_per_lang(
+                    zh_kw_map, hyp_map, "中文", use_substring_match=True
+                )
+                en_result = _kwr.compute_keyword_recall_per_lang(
+                    en_kw_map, hyp_map, "英文", use_substring_match=False
+                )
+                keyword_recall = {
+                    "zh": {
+                        "recall": round(float(zh_result[0]), 6),
+                        "used_utterances": int(zh_result[1]),
+                        "total_intersection_utterances": int(zh_result[2]),
+                    },
+                    "en": {
+                        "recall": round(float(en_result[0]), 6),
+                        "used_utterances": int(en_result[1]),
+                        "total_intersection_utterances": int(en_result[2]),
+                    },
+                    "artifacts": {
+                        "zh_keyword": str(zh_kw),
+                        "en_keyword": str(en_kw),
+                        "report": str(out_validation / "keyword_recall.txt"),
+                    },
+                }
+                if self.keep_keyword_details:
+                    keyword_recall["details"] = {
+                        "zh": zh_result[3],
+                        "en": en_result[3],
+                    }
+
             # 写回 sample
             sample[self.text_key] = merged_text
             sample[self.data_key] = b""
@@ -278,12 +352,14 @@ class AudioAsrPipeline(Mapper):
                     "split_dir": str(out_split),
                     "asr_dir": str(out_asr),
                     "merged_text": str(merged),
+                    "validation_dir": str(out_validation) if self.do_keyword_recall else "",
                 },
             }
+            if keyword_recall is not None:
+                ext["audio_asr"]["keyword_recall"] = keyword_recall
             sample[self.ext_params_key] = ext
 
         logger.info(
             f"fileName: {sample.get(self.filename_key)}, method: AudioAsrPipeline costs {time.time() - start:6f} s"
         )
         return sample
-

@@ -7,7 +7,7 @@ vendor: 'huawei'
 raw_id: 'AudioSoftPeakLimiter'
 version: '1.0.0'
 types:
-  - 'cleanse'
+  - 'cleaning'
 modal: 'audio'
 inputs: 'audio'
 outputs: 'audio'
@@ -52,4 +52,10 @@ runtime:
   cpu: 0.12
   gpu: 0
   npu: 0
+  storage: 10MB
 
+metrics:
+  - name: '处理耗时'
+    metric: '依输入音频长度与运行环境而定'
+release:
+  - '首次发布'

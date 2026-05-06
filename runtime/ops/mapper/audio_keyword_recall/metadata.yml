@@ -1,0 +1,59 @@
+name: 'ASR关键词召回率评估'
+name_en: 'ASR Keyword Recall Evaluation'
+description: '读取中英文关键词列表与 ASR merged_text 结果，计算中文/英文关键词召回率，写入 ext_params.audio_keyword_recall 并生成报告文件。'
+description_en: 'Evaluate zh/en keyword recall from keyword lists and ASR merged_text, write metrics to ext_params.audio_keyword_recall, and generate a report file.'
+language: 'python'
+vendor: 'huawei'
+raw_id: 'AudioKeywordRecall'
+version: '1.0.0'
+types:
+  - 'annotation'
+modal: 'audio'
+inputs: 'audio'
+outputs: 'text'
+settings:
+  zhKeywordPath:
+    name: '中文关键词文件'
+    type: 'input'
+    description: 'Kaldi 格式中文关键词文件路径；留空使用 audio_preprocessor/input_data/valiadation/zh_keyword.txt。'
+    defaultVal: ''
+    required: false
+  enKeywordPath:
+    name: '英文关键词文件'
+    type: 'input'
+    description: 'Kaldi 格式英文关键词文件路径；留空使用 audio_preprocessor/input_data/valiadation/en_keyword.txt。'
+    defaultVal: ''
+    required: false
+  hypPath:
+    name: 'ASR结果文件'
+    type: 'input'
+    description: 'Kaldi 格式 ASR merged_text.txt 路径；留空使用 audio_preprocessor/output_data/asr/merged_text.txt。'
+    defaultVal: ''
+    required: false
+  reportDir:
+    name: '报告输出目录'
+    type: 'input'
+    description: 'keyword_recall.txt 输出目录；留空使用 audio_preprocessor/output_data/validation。'
+    defaultVal: ''
+    required: false
+  keepDetails:
+    name: '写入逐句明细'
+    type: 'switch'
+    description: '是否将逐句 hit/miss 明细写入 ext_params。报告文件始终包含明细。'
+    defaultVal: 'true'
+    required: false
+    checkedLabel: '写入'
+    unCheckedLabel: '不写入'
+runtime:
+  memory: 104857600
+  cpu: 0.1
+  gpu: 0
+  npu: 0
+  storage: 10MB
+metrics:
+  - name: '中文关键词召回率'
+    metric: '由输入关键词与识别结果计算'
+  - name: '英文关键词召回率'
+    metric: '由输入关键词与识别结果计算'
+release:
+  - '首次发布，支持中英文关键词召回率评估'

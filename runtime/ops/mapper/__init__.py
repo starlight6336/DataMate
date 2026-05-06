@@ -62,6 +62,7 @@ def _import_operators():
     from . import audio_quantize_encode
     from . import audio_fast_lang_id
     from . import audio_asr_pipeline
+    from . import audio_keyword_recall
 
 
 _import_operators()

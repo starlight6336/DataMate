@@ -2,13 +2,14 @@
 
 ## 概述
 
-AudioAsrPipeline 将 `audio_preprocessor` 的推荐流水线封装为一个 DataMate Mapper 算子：标准化、（可选）降噪、（可选）异常过滤、语言识别、切分、ASR 识别与合并。最终合并文本写入 `sample["text"]`，并在 `ext_params` 中记录中间产物路径，便于排查与验收。
+AudioAsrPipeline 将 `audio_preprocessor` 的推荐流水线封装为一个 DataMate Mapper 算子：标准化、（可选）降噪、（可选）异常过滤、语言识别、切分、ASR 识别与合并，并可选计算中英文关键词召回率。最终合并文本写入 `sample["text"]`，并在 `ext_params` 中记录中间产物路径，便于排查与验收。
 
 ## 功能特性
 
-- **端到端流水线**：normalization →（可选）GTCRN →（可选）异常过滤 → LID → split → ASR → merge
+- **端到端流水线**：normalization →（可选）GTCRN →（可选）异常过滤 → LID → split → ASR → merge →（可选）关键词召回率
 - **可配置**：每个关键步骤参数化（降噪开关、过滤阈值、LID 截断秒数、切分长度、ASR 设备等）
 - **结果可追溯**：中间产物路径记录在 `ext_params.audio_asr.artifacts`
+- **关键词召回率**：复用 `audio_preprocessor/src/pipeline/eval_keyword_recall.py`，生成 `keyword_recall.txt`
 - **面向验收**：输出合并转写文本到 `sample["text"]`
 
 ## 参数说明
@@ -27,6 +28,10 @@ AudioAsrPipeline 将 `audio_preprocessor` 的推荐流水线封装为一个 Data
 | lidMaxSeconds | inputNumber | 3.0 | LID 只取前 N 秒，0=全长 |
 | maxSegmentSeconds | inputNumber | 120 | 切分最大秒数 |
 | asrDevice | select | auto | ASR 设备参数（auto/cpu/npu） |
+| doKeywordRecall | switch | false | 是否在 ASR 后计算关键词召回率 |
+| zhKeywordPath | input | (空) | 中文关键词文件；留空使用 `audio_preprocessor/input_data/valiadation/zh_keyword.txt` |
+| enKeywordPath | input | (空) | 英文关键词文件；留空使用 `audio_preprocessor/input_data/valiadation/en_keyword.txt` |
+| keepKeywordDetails | switch | false | 是否将逐句 hit/miss 明细写入 `ext_params` |
 
 ## 输入输出
 
@@ -36,6 +41,7 @@ AudioAsrPipeline 将 `audio_preprocessor` 的推荐流水线封装为一个 Data
   - `sample["ext_params"]["audio_asr"]`：
     - `lang`：LID 结果（zh/en）
     - `artifacts`：中间产物路径（normalized/denoise/lid/split/asr/merged_text）
+    - `keyword_recall`：启用 `doKeywordRecall` 后写入中英文关键词召回率、样本数与报告路径
 
 ## 依赖说明
 
@@ -45,8 +51,10 @@ AudioAsrPipeline 将 `audio_preprocessor` 的推荐流水线封装为一个 Data
   - 降噪：`onnxruntime`（以及 GTCRN 模型文件）
 - **系统依赖**：
   - `pydub` 通常需要 `ffmpeg`
+- **关键词召回率**：
+  - 使用纯 Python 文本处理，不额外依赖模型
 
 ## 版本历史
 
 - **v1.0.0**：首次发布，支持音频标准化/（可选）降噪/过滤/LID/切分/ASR/合并
-
+- **v1.1.0**：同步 `audio_preprocessor` 关键词召回率能力，支持可选中英文关键词召回率评估
